@@ -103,3 +103,6 @@ venv.bak/
 # mypy
 .mypy_cache/
 /ТЗ/
+/01_advanced_basics/
+/reports/
+/.idea/
