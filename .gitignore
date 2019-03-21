@@ -102,3 +102,6 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+/01_advanced_basics/
+/reports/
+/.idea/
