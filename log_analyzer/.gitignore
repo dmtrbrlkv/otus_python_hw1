@@ -1,2 +1,5 @@
 /nginx-access-ui.log-20170630.gz
 *.log-20170730.gz
+/config2.json
+/logtest.txt
+/test2.py
