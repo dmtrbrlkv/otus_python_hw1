@@ -1,3 +1,6 @@
+# !/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 import os
 import re
 from datetime import date
@@ -8,10 +11,7 @@ from string import Template
 import json
 import argparse
 import logging
-
-# !/usr/bin/env python
-# -*- coding: utf-8 -*-
-
+import functools
 
 # log_format ui_short '$remote_addr  $remote_user $http_x_real_ip [$time_local] "$request" '
 #                     '$status $body_bytes_sent "$http_referer" '
@@ -21,18 +21,28 @@ import logging
 config = {
     "REPORT_SIZE": 1000,
     "REPORT_DIR": "../reports",
-    "LOG_DIR": "../ТЗ"
+    "LOG_DIR": "../logs"
 }
+
+def debug_info(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        logging.debug(f"Вызов функции {func.__name__} c аргументами args={args}, kwargs={kwargs}")
+        res = func(*args, **kwargs)
+        return res
+    return wrapper
 
 LogPath = namedtuple("LogPath", "filepath, date")
 ParsedUrl = namedtuple("ParsedUrl", "url, work_time")
 ParsedData = namedtuple("ParsedData", "urls, total_logs, total_time, err_count")
 
-
+@debug_info
 def get_last_log_filepath(log_dir, report_dir, log_template):
     last_date = None
     fp = ""
     pattern = re.compile(log_template)
+    if not os.path.exists(log_dir):
+        raise RuntimeError(f"Не удалось открыть папку с логами - {log_dir}")
     for filename in os.listdir(log_dir):
         filepath = os.path.join(log_dir, filename)
         if os.path.isfile(filepath):
@@ -49,7 +59,7 @@ def get_last_log_filepath(log_dir, report_dir, log_template):
                         fp = filepath
     return LogPath(fp, last_date)
 
-
+@debug_info
 def get_parsed_data(filpath, template, max_log=None):
     urls = dict()
     total_logs = 0
@@ -67,7 +77,7 @@ def get_parsed_data(filpath, template, max_log=None):
             err_count += 1
     return ParsedData(urls, total_logs, total_time, err_count)
 
-
+@debug_info
 def parse_log_strings(filepath, template, max_log=None):
     pattern = re.compile(template)
     open_f = gzip.open if filepath.endswith('.gz') else open
@@ -94,6 +104,7 @@ def parse_log_string(string, pattern):
         return ParsedUrl(None, None)
 
 
+@debug_info
 def make_report_json(parsed_data, total_logs, total_time, report_size):
     UrlsInfo = namedtuple("UrlsInfo", "url, work_time_list")
     urls_infos = []
@@ -118,9 +129,11 @@ def make_report_json(parsed_data, total_logs, total_time, report_size):
         to_json.append(row)
     return json.dumps(to_json)
 
-
-def render_html(json_data, report_dir, date):
-    with open(os.path.join(report_dir, "report.html")) as f:
+@debug_info
+def render_html(json_data, report_dir, date, report_file="report.html"):
+    if not os.path.exists(report_file):
+        raise RuntimeError(f"Не найден файл шаблона отчета - {report_file}")
+    with open(report_file) as f:
         html = f.read()
     html = Template(html).safe_substitute(table_json=json_data)
     filepath = os.path.join(config["REPORT_DIR"], f"report-{date.strftime('%Y%m%d')}.html")
@@ -188,15 +201,15 @@ def load_config(config):
 
 def create_config_file():
     conf = {
-        "LOGGING_FILE": "log.log",
-        "LOG_FILE_TEMPLATE": "nginx-access-ui\\.log-(?P<year>\\d{4})(?P<month>\\d{2})(?P<day>\\d{2})\\.gz$|$",
-        "LOG_TEMPLATE": ".+ .+ .+ \\[.+\\] \\\".+ (?P<request_url>.+) .+\\\" .+ .+ .+ \\\".+\\\" .+ .+ .+ (?P<request_time>.+)",
-        "LOG_TEMPLATE_SIMPLE": ".+\\] \\\".+ (?P<request_url>.+) HTTP.+(?P<request_time>\\d\\.\\d*)$",
-        "LOG_TEMPLATE_FULL": "(?P<remote_addr>.+) (?P<remote_user>.+) (?P<http_x_real_ip>.+) \\[(?P<time_local>.+)\\] \\\"(?P<request_type>.+) (?P<request_url>.+) (?P<request_v>.+)\\\" (?P<status>.+) (?P<body_bytes_sent>.+) (?P<http_refer>.+) \\\"(?P<http_user_agent>.+)\\\" (?P<http_x_forwarded_for>.+) (?P<http_X_REQUEST_ID>.+) (?P<http_X_RB_USER>.+) (?P<request_time>.+)",
-        "MAX_ERRORS_PERC": 10,
-        "MAX_LOGS": None
+            "LOG_FILE_TEMPLATE": "nginx-access-ui\\.log-(?P<year>\\d{4})(?P<month>\\d{2})(?P<day>\\d{2})\\.gz$|$",
+            "LOG_TEMPLATE": ".+ .+ .+ \\[.+\\] \\\".+ (?P<request_url>.+) .+\\\" .+ .+ .+ \\\".+\\\" .+ .+ .+ (?P<request_time>.+)",
+            "LOG_TEMPLATE_SIMPLE": ".+\\] \\\".+ (?P<request_url>.+) HTTP.+(?P<request_time>\\d\\.\\d*)$",
+            "LOG_TEMPLATE_FULL": "(?P<remote_addr>.+) (?P<remote_user>.+) (?P<http_x_real_ip>.+) \\[(?P<time_local>.+)\\] \\\"(?P<request_type>.+) (?P<request_url>.+) (?P<request_v>.+)\\\" (?P<status>.+) (?P<body_bytes_sent>.+) (?P<http_refer>.+) \\\"(?P<http_user_agent>.+)\\\" (?P<http_x_forwarded_for>.+) (?P<http_X_REQUEST_ID>.+) (?P<http_X_RB_USER>.+) (?P<request_time>.+)",
+            "MAX_ERRORS_PERC": 10,
+            "MAX_LOGS": None,
+            "HTML_TEMPLATE": "..\\reports\\report.html"
     }
-    with open("config2.json", mode="w") as f:
+    with open("config.json", mode="w") as f:
         json.dump(conf, f, indent=4)
 
 
@@ -222,7 +235,7 @@ def main():
 
         json_data = make_report_json(parsed_data.urls, parsed_data.total_logs, parsed_data.total_time,
                                      config["REPORT_SIZE"])
-        report_path = render_html(json_data, config["REPORT_DIR"], log_filepath.date)
+        report_path = render_html(json_data, config["REPORT_DIR"], log_filepath.date, config["HTML_TEMPLATE"])
         logging.info(f"Отчет сформирован - {report_path}")
 
     except KeyboardInterrupt:
