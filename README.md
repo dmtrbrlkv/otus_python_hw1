@@ -37,15 +37,18 @@ optional arguments:
 ## Тесты
 
 Запуск из папки ./log_analyzer
+
 python -m unittest
   
   
 ## Poker
 
 Запуск из папки ./
+
 python poker.py
 
 ## Deco
 
-Запуск из корневой папки
+Запуск из папки ./
+
 python deco.py
