@@ -4,6 +4,7 @@
 ## Log Analyzer
 
 Запуск из папки ./log_analyzer
+
 python log_analyzer.py
 
 Аргументы командной строки
@@ -36,7 +37,7 @@ optional arguments:
   
 ## Тесты
 
-Запуск из папки ./log_analyzer
+Запуск из папки ./tests
 
 python -m unittest
   
