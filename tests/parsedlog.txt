@@ -1,0 +1,10 @@
+/api/v2/banner/25019354 0.390
+/api/1/photogenic_banners/list/?server_name=WIN7RB4 0.133
+/api/v2/banner/16852664 0.199
+/api/v2/slot/4705/groups 0.704
+/api/v2/internal/banner/24294027/info 0.146
+/api/v2/group/1769230/banners 0.628
+/api/v2/group/7786679/statistic/sites/?date_type=day&date_from=2017-06-28&date_to=2017-06-28 0.067
+/api/v2/banner/1717161 0.138
+/export/appinstall_raw/2017-06-29/ 0.003
+/api/v2/slot/4822/groups 0.157
