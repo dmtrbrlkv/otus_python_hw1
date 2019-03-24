@@ -1,5 +1,7 @@
 import unittest
-import log_analyzer.log_analyzer as la
+import env
+
+from log_analyzer import log_analyzer as la
 import os.path
 import datetime
 import re

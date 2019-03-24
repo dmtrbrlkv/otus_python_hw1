@@ -25,6 +25,8 @@ config = {
 }
 
 def debug_info(func):
+    """декоратор для логирования вызовов функций"""
+
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         logging.debug(f"Вызов функции {func.__name__} c аргументами args={args}, kwargs={kwargs}")
@@ -32,12 +34,22 @@ def debug_info(func):
         return res
     return wrapper
 
+
 LogPath = namedtuple("LogPath", "filepath, date")
 ParsedUrl = namedtuple("ParsedUrl", "url, work_time")
 ParsedData = namedtuple("ParsedData", "urls, total_logs, total_time, err_count")
 
 @debug_info
 def get_last_log_filepath(log_dir, report_dir, log_template):
+    """
+    возвращает последний непроанализированный лог и его дату
+    :param log_dir: папка с логами
+    :param report_dir: папка с отчетами
+    :param log_template: регулярное выражения для имени лог-файла
+    :return: LogPath(filepath=<путь> , date=<дата>), если логов нет, то LogPath(None , None)
+    """
+
+
     last_date = None
     fp = ""
     pattern = re.compile(log_template)
@@ -61,6 +73,14 @@ def get_last_log_filepath(log_dir, report_dir, log_template):
 
 @debug_info
 def get_parsed_data(filpath, template, max_log=None):
+    """
+    парсинг лога
+    :param filpath: лог-файл
+    :param template: регулярное выражение для строки лога
+    :param max_log: максимальное число анализируемых строк
+    :return: ParsedData(urls=<dict("url": "list(время1, время2...)")>, total_logs=<число логов>, total_time=<общее время обработки запросов>, err_count=<число ошибок>)
+    """
+
     urls = dict()
     total_logs = 0
     total_time = 0
@@ -72,13 +92,21 @@ def get_parsed_data(filpath, template, max_log=None):
                 urls[parsed_url.url] = []
             urls[parsed_url.url].append(parsed_url.work_time)
             total_time += parsed_url.work_time
-            # logging.info(parsed_url)
         else:
             err_count += 1
+        # logging.debug(parsed_url)
     return ParsedData(urls, total_logs, total_time, err_count)
+
 
 @debug_info
 def parse_log_strings(filepath, template, max_log=None):
+    """
+    вспомогательный генератор для парсинга, возвращает информацию для очередной проанализированной строки
+    :param filepath: лог-файл
+    :param template: регулярное выражение для строки лога
+    :param max_log: максимальное число анализируемых строк
+    :return: ParsedUrl(url=<url>, work_time=<время обработки запроса>)
+    """
     pattern = re.compile(template)
     open_f = gzip.open if filepath.endswith('.gz') else open
     with open_f(filepath, mode="rb") as f:
@@ -97,6 +125,12 @@ def parse_log_strings(filepath, template, max_log=None):
 
 
 def parse_log_string(string, pattern):
+    """
+    парсинг строки лога
+    :param string: строка
+    :param pattern: скомпилированный паттерн регулярного выражения для строки лога
+    :return: ParsedUrl(utl=<url>, work_time=<время обработки запроса>)
+    """
     res = re.match(pattern, string)
     if res:
         return ParsedUrl(res.group("request_url"), float(res.group("request_time")))
@@ -104,8 +138,15 @@ def parse_log_string(string, pattern):
         return ParsedUrl(None, None)
 
 
-@debug_info
 def make_report_json(parsed_data, total_logs, total_time, report_size):
+    """
+    вычисления показателей и перевод распаршенной информации в json
+    :param parsed_data: распаршенная информации
+    :param total_logs: число логов
+    :param total_time: общее время обработки запросов
+    :param report_size: максимальный размер отчета
+    :return: json строка
+    """
     UrlsInfo = namedtuple("UrlsInfo", "url, work_time_list")
     urls_infos = []
     for url, work_time_list in parsed_data.items():
@@ -129,8 +170,16 @@ def make_report_json(parsed_data, total_logs, total_time, report_size):
         to_json.append(row)
     return json.dumps(to_json)
 
-@debug_info
+
 def render_html(json_data, report_dir, date, report_file="report.html"):
+    """
+    рендер html отчета
+    :param json_data: данные для отчета
+    :param report_dir: папка для отчета
+    :param date: дата отчета
+    :param report_file: шаблон отчета
+    :return: путь до сгенерированного отчета
+    """
     if not os.path.exists(report_file):
         raise RuntimeError(f"Не найден файл шаблона отчета - {report_file}")
     with open(report_file) as f:
@@ -147,15 +196,31 @@ def init_log(level=logging.INFO,
              format="[%(asctime)s] %(levelname).1s %(message)s",
              datefmt="%Y.%m.%d %H:%M:%S"
              ):
+    """
+    инициализация логирования
+    :param level: уровень лога
+    :param filename: файл для лога
+    :param format: формат записи лога
+    :param datefmt: формат времени лога
+    :return:
+    """
     if not is_logging_init():
         logging.basicConfig(format=format, datefmt=datefmt, level=level, filename=filename)
 
 
 def is_logging_init():
+    """
+    проинициализировано ли логирование
+    :return:
+    """
     return logging.getLogger().hasHandlers()
 
 
 def load_config(config):
+    """
+    загрузака конфига, дополняет переданный конфиг значениями из параметров командной строки и конфиг-файла
+    :param config: словарь, в который будет загружен конфиг
+    """
     level = logging.INFO
     filename = None
 
@@ -190,17 +255,19 @@ def load_config(config):
         else:
             logging.error("Конфигурационный файл не найден")
 
-    if "LOGGING_LEVEL" in config:
-        level = config["LOGGING_LEVEL"]
+    if "LOGGING_LEVEL" not in config:
+        config["LOGGING_LEVEL"] = logging.INFO
 
-    if "LOGGING_FILE" in config:
-        filename = config["LOGGING_FILE"]
+    if "LOGGING_FILE" not in config:
+        config["LOGGING_FILE"] = "log.log"
 
-    init_log(level, filename)
 
 
 def create_config_file():
-    conf = {
+    """
+    создание дефолтного конфиг-файла, если его случайно удалили
+    """
+    default_conf = {
             "LOG_FILE_TEMPLATE": "nginx-access-ui\\.log-(?P<year>\\d{4})(?P<month>\\d{2})(?P<day>\\d{2})\\.gz$|$",
             "LOG_TEMPLATE": ".+ .+ .+ \\[.+\\] \\\".+ (?P<request_url>.+) .+\\\" .+ .+ .+ \\\".+\\\" .+ .+ .+ (?P<request_time>.+)",
             "LOG_TEMPLATE_SIMPLE": ".+\\] \\\".+ (?P<request_url>.+) HTTP.+(?P<request_time>\\d\\.\\d*)$",
@@ -210,12 +277,14 @@ def create_config_file():
             "HTML_TEMPLATE": "..\\reports\\report.html"
     }
     with open("config.json", mode="w") as f:
-        json.dump(conf, f, indent=4)
+        json.dump(default_conf, f, indent=4)
 
 
 def main():
     try:
         load_config(config)
+        init_log(config["LOGGING_LEVEL"], config["LOGGING_FILE"])
+
         log_filepath = get_last_log_filepath(config["LOG_DIR"], config["REPORT_DIR"], config["LOG_FILE_TEMPLATE"])
 
         if not log_filepath.filepath:

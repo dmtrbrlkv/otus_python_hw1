@@ -4,15 +4,17 @@
 from functools import update_wrapper
 
 
-def disable():
+def disable(func):
     '''
     Disable a decorator by re-assigning the decorator's name
     to this function. For example, to turn off memoization:
 
     >>> memo = disable
-
     '''
-    return
+    @decorator(func)
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+    return wrapper
 
 
 def decorator(dec):
@@ -114,6 +116,7 @@ def trace(trace_spacer):
     return tracer
 
 
+
 @memo
 @countcalls
 @n_ary
@@ -138,6 +141,8 @@ def fib(n):
 
 
 def main():
+
+
     print(foo(4, 3))
     print(foo(4, 3, 2))
     print(foo(4, 3))
@@ -148,8 +153,9 @@ def main():
     print(bar(4, 3, 2, 1))
     print("bar was called", bar.calls, "times")
 
+
     print(fib.__doc__)
-    fib(3)
+    print(fib(3))
     print(fib.calls, 'calls made')
 
 
