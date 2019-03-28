@@ -269,7 +269,7 @@ def main():
     logging.info("Work begin")
     log_info = get_last_log(config["LOG_DIR"], config["LOG_FILE_TEMPLATE"])
 
-    if is_report_exist(config["REPORT_DIR"], log_info.date):
+    if log_info is None or is_report_exist(config["REPORT_DIR"], log_info.date):
         logging.info("No logs to analyze")
         return
 
