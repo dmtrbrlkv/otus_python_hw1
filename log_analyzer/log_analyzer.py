@@ -70,6 +70,10 @@ def get_last_log(log_dir, log_template):
         if not last_date or cur_date > last_date:
             last_date = cur_date
             fp = filepath
+
+    if last_date is None:
+        return None
+
     return LogInfo(fp, last_date)
 
 
