@@ -12,6 +12,8 @@ import json
 import argparse
 import logging
 import functools
+import sys
+import traceback
 
 # log_format ui_short '$remote_addr  $remote_user $http_x_real_ip [$time_local] "$request" '
 #                     '$status $body_bytes_sent "$http_referer" '
@@ -24,23 +26,25 @@ config = {
     "LOG_DIR": "../logs"
 }
 
+
 def debug_info(func):
     """декоратор для логирования вызовов функций"""
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
-        logging.debug(f"Вызов функции {func.__name__} c аргументами args={args}, kwargs={kwargs}")
+        logging.debug(f"Call function {func.__name__} with arguments args={args}, kwargs={kwargs}")
         res = func(*args, **kwargs)
         return res
     return wrapper
 
 
-LogPath = namedtuple("LogPath", "filepath, date")
+LogInfo = namedtuple("LogInfo", "filepath, date")
 ParsedUrl = namedtuple("ParsedUrl", "url, work_time")
 ParsedData = namedtuple("ParsedData", "urls, total_logs, total_time, err_count")
 
+
 @debug_info
-def get_last_log_filepath(log_dir, report_dir, log_template):
+def get_last_log(log_dir, log_template):
     """
     возвращает последний непроанализированный лог и его дату
     :param log_dir: папка с логами
@@ -49,30 +53,33 @@ def get_last_log_filepath(log_dir, report_dir, log_template):
     :return: LogPath(filepath=<путь> , date=<дата>), если логов нет, то LogPath(None , None)
     """
 
-
     last_date = None
     fp = ""
     pattern = re.compile(log_template)
     if not os.path.exists(log_dir):
-        raise RuntimeError(f"Не удалось открыть папку с логами - {log_dir}")
+        raise FileNotFoundError(f"Logs directory does not exist - {log_dir}")
     for filename in os.listdir(log_dir):
         filepath = os.path.join(log_dir, filename)
-        if os.path.isfile(filepath):
-            res = re.match(log_template, filename)
-            if res:
-                year = int(res.group("year"))
-                month = int(res.group("month"))
-                day = int(res.group("day"))
-                cur_date = date(year, month, day)
-                exist_report_path = os.path.join(report_dir, "report-" + cur_date.strftime("%Y%m%d") + ".html")
-                if not os.path.exists(exist_report_path):
-                    if not last_date or cur_date > last_date:
-                        last_date = cur_date
-                        fp = filepath
-    return LogPath(fp, last_date)
+        if not os.path.isfile(filepath):
+            continue
+        res = re.match(log_template, filename)
+        if not res:
+            continue
+        year, month, day = map(int, (res.group("year"), res.group("month"), res.group("day")))
+        cur_date = date(year, month, day)
+        if not last_date or cur_date > last_date:
+            last_date = cur_date
+            fp = filepath
+    return LogInfo(fp, last_date)
+
+
+def is_report_exist(report_dir, date):
+    exist_report_path = os.path.join(report_dir, "report-" + date.strftime("%Y%m%d") + ".html")
+    return os.path.exists(exist_report_path)
+
 
 @debug_info
-def get_parsed_data(filpath, template, max_log=None):
+def get_parsed_data(filpath, template):
     """
     парсинг лога
     :param filpath: лог-файл
@@ -85,21 +92,21 @@ def get_parsed_data(filpath, template, max_log=None):
     total_logs = 0
     total_time = 0
     err_count = 0
-    for parsed_url in parse_log_strings(filpath, template, max_log):
+    for parsed_url in parse_log_strings(filpath, template):
         total_logs += 1
-        if parsed_url.url:
+        if parsed_url is None:
+            err_count += 1
+        else:
+            total_time += parsed_url.work_time
             if parsed_url.url not in urls:
                 urls[parsed_url.url] = []
             urls[parsed_url.url].append(parsed_url.work_time)
-            total_time += parsed_url.work_time
-        else:
-            err_count += 1
         # logging.debug(parsed_url)
     return ParsedData(urls, total_logs, total_time, err_count)
 
 
 @debug_info
-def parse_log_strings(filepath, template, max_log=None):
+def parse_log_strings(filepath, template):
     """
     вспомогательный генератор для парсинга, возвращает информацию для очередной проанализированной строки
     :param filepath: лог-файл
@@ -114,13 +121,13 @@ def parse_log_strings(filepath, template, max_log=None):
         for string in f:
             string = string.decode("utf8")
             cnt += 1
-            if (cnt % 100000) == 0:
-                logging.info(f"обработано {cnt} строк")
-            if max_log and cnt > max_log:
+            if cnt == 300000:
                 return
+            if (cnt % 100000) == 0:
+                logging.info(f"{cnt} lines processed")
             parsed_url = parse_log_string(string, pattern)
-            if not parsed_url.url:
-              logging.info(f"Нераспознанная строка {string.strip()}")
+            if parsed_url is None:
+              logging.info(f"Unrecognized line '{string.strip()}'")
             yield parsed_url
 
 
@@ -135,7 +142,7 @@ def parse_log_string(string, pattern):
     if res:
         return ParsedUrl(res.group("request_url"), float(res.group("request_time")))
     else:
-        return ParsedUrl(None, None)
+        return None
 
 
 def make_report_json(parsed_data, total_logs, total_time, report_size):
@@ -181,7 +188,7 @@ def render_html(json_data, report_dir, date, report_file="report.html"):
     :return: путь до сгенерированного отчета
     """
     if not os.path.exists(report_file):
-        raise RuntimeError(f"Не найден файл шаблона отчета - {report_file}")
+        raise RuntimeError(f"Report template file not found - {report_file}")
     with open(report_file) as f:
         html = f.read()
     html = Template(html).safe_substitute(table_json=json_data)
@@ -204,56 +211,30 @@ def init_log(level=logging.INFO,
     :param datefmt: формат времени лога
     :return:
     """
-    if not is_logging_init():
-        logging.basicConfig(format=format, datefmt=datefmt, level=level, filename=filename)
+    logging.basicConfig(format=format, datefmt=datefmt, level=level, filename=filename)
 
 
-def is_logging_init():
-    """
-    проинициализировано ли логирование
-    :return:
-    """
-    return logging.getLogger().hasHandlers()
+def get_config_path():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-c", "--config", type=str, default="config.json", help="конфигурационный файл")
+    namespace = parser.parse_args()
+    return namespace.config
 
 
-def load_config(config):
+def load_config(config, filepath):
     """
     загрузака конфига, дополняет переданный конфиг значениями из параметров командной строки и конфиг-файла
     :param config: словарь, в который будет загружен конфиг
     """
-    level = logging.INFO
-    filename = None
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-rd", "--report_dir", type=str, help="папка для отчетов")
-    parser.add_argument("-ld", "--log_dir", type=str, help="папка с логами")
-    parser.add_argument("-c", "--config", type=str, default="config.json", help="конфигурационный файл")
-    parser.add_argument("-rs", "--report_size", type=str, help="размер отчета")
-    parser.add_argument("-cc", "--create_config", action="store_true",
-                        help="генерация дефолтного конфигурационного файла"
-                        )
-    namespace = parser.parse_args()
-
-    if namespace.create_config:
-        create_config_file()
-
-    for key, value in namespace.__dict__.items():
-        if value:
-            if key != "config":
-                config[key.upper()] = value
-    filepath = namespace.config
-    if filepath:
-        if os.path.exists(filepath):
-            with open(filepath) as f:
-                conf_from_file = json.load(f)
-                if isinstance(conf_from_file, dict):
-                    for key, value in conf_from_file.items():
-                        config[key] = value
-                else:
-                    logging.error("Неверный формат данных в конфигурационном файле")
-
-        else:
-            logging.error("Конфигурационный файл не найден")
+    if not os.path.exists(filepath):
+        raise FileNotFoundError("Configuration file not found")
+    with open(filepath) as f:
+        conf_from_file = json.load(f)
+        if not isinstance(conf_from_file, dict):
+            raise TypeError("Wrong data format in configuration file")
+        for key, value in conf_from_file.items():
+            config[key] = value
 
     if "LOGGING_LEVEL" not in config:
         config["LOGGING_LEVEL"] = logging.INFO
@@ -262,58 +243,42 @@ def load_config(config):
         config["LOGGING_FILE"] = "log.log"
 
 
-
-def create_config_file():
-    """
-    создание дефолтного конфиг-файла, если его случайно удалили
-    """
-    default_conf = {
-            "LOG_FILE_TEMPLATE": "nginx-access-ui\\.log-(?P<year>\\d{4})(?P<month>\\d{2})(?P<day>\\d{2})\\.gz$|$",
-            "LOG_TEMPLATE": ".+ .+ .+ \\[.+\\] \\\".+ (?P<request_url>.+) .+\\\" .+ .+ .+ \\\".+\\\" .+ .+ .+ (?P<request_time>.+)",
-            "LOG_TEMPLATE_SIMPLE": ".+\\] \\\".+ (?P<request_url>.+) HTTP.+(?P<request_time>\\d\\.\\d*)$",
-            "LOG_TEMPLATE_FULL": "(?P<remote_addr>.+) (?P<remote_user>.+) (?P<http_x_real_ip>.+) \\[(?P<time_local>.+)\\] \\\"(?P<request_type>.+) (?P<request_url>.+) (?P<request_v>.+)\\\" (?P<status>.+) (?P<body_bytes_sent>.+) (?P<http_refer>.+) \\\"(?P<http_user_agent>.+)\\\" (?P<http_x_forwarded_for>.+) (?P<http_X_REQUEST_ID>.+) (?P<http_X_RB_USER>.+) (?P<request_time>.+)",
-            "MAX_ERRORS_PERC": 10,
-            "MAX_LOGS": None,
-            "HTML_TEMPLATE": "..\\reports\\report.html"
-    }
-    with open("config.json", mode="w") as f:
-        json.dump(default_conf, f, indent=4)
-
-
 def main():
-    try:
-        load_config(config)
-        init_log(config["LOGGING_LEVEL"], config["LOGGING_FILE"])
+    load_config(config, get_config_path())
+    init_log(config["LOGGING_LEVEL"], config["LOGGING_FILE"])
+    log_info = get_last_log(config["LOG_DIR"], config["LOG_FILE_TEMPLATE"])
 
-        log_filepath = get_last_log_filepath(config["LOG_DIR"], config["REPORT_DIR"], config["LOG_FILE_TEMPLATE"])
+    if is_report_exist(config["REPORT_DIR"], log_info.date):
+        logging.info("No logs to analyze")
+        return
 
-        if not log_filepath.filepath:
-            logging.info("Нет логов для анализа")
-            return
+    parsed_data = get_parsed_data(log_info.filepath, config["LOG_TEMPLATE_SIMPLE"])
 
-        parsed_data = get_parsed_data(log_filepath.filepath, config["LOG_TEMPLATE_SIMPLE"], config["MAX_LOGS"])
+    if "MAX_ERRORS_PERC" in config:
+        max_errors = config["MAX_ERRORS_PERC"]
+    else:
+        max_errors = 100
 
-        if "MAX_ERRORS_PERC" in config:
-            max_errors = config["MAX_ERRORS_PERC"]
-        else:
-            max_errors = 100
+    if parsed_data.err_count / parsed_data.total_logs * 100 >= max_errors:
+        logging.error("Maximum error rate exceeded")
+        return
 
-        if parsed_data.err_count / parsed_data.total_logs * 100 >= max_errors:
-            logging.error("Превышен максимальный процент ошибок при анализе логов")
-            return
-
-        json_data = make_report_json(parsed_data.urls, parsed_data.total_logs, parsed_data.total_time,
-                                     config["REPORT_SIZE"])
-        report_path = render_html(json_data, config["REPORT_DIR"], log_filepath.date, config["HTML_TEMPLATE"])
-        logging.info(f"Отчет сформирован - {report_path}")
-
-    except KeyboardInterrupt:
-        init_log()
-        logging.exception("Работа прервана")
-    except Exception:
-        init_log()
-        logging.exception("В процессе работы произошла ошибка")
+    json_data = make_report_json(parsed_data.urls, parsed_data.total_logs, parsed_data.total_time,
+                                 config["REPORT_SIZE"])
+    report_path = render_html(json_data, config["REPORT_DIR"], log_info.date, config["HTML_TEMPLATE"])
+    logging.info(f"Report is generated - {report_path}")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        init_log()
+        logging.exception("Work interrupted")
+    except Exception as e:
+        if logging.getLogger().hasHandlers():
+            logging.exception("An error occurred")
+        else:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            print("An error occurred:")
+            traceback.print_exception(exc_type, exc_value, exc_traceback, file=sys.stderr)

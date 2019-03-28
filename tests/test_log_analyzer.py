@@ -6,6 +6,7 @@ import os.path
 import datetime
 import re
 
+
 class Test_get_last_log_filepath(unittest.TestCase):
     test_dir = "test_dir"
 
@@ -53,7 +54,7 @@ class Test_parse_log_string(unittest.TestCase):
             for string in f:
                 parsed_log.append(string.split())
 
-        la.load_config(la.config)
+        la.load_config(la.config, "config.json")
         log_template = la.config["LOG_TEMPLATE_SIMPLE"]
         pattern = re.compile(log_template)
 
@@ -63,8 +64,7 @@ class Test_parse_log_string(unittest.TestCase):
             self.assertEqual(res.work_time, float(parsed_log[i][1]))
 
         res = la.parse_log_string("blablabla", pattern)
-        self.assertEqual(res.url, None)
-        self.assertEqual(res.work_time, None)
+        self.assertEqual(res, None)
 
 
 if __name__ == '__main__':
