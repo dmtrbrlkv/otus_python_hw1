@@ -28,7 +28,7 @@ config = {
 
 
 def debug_info(func):
-    """декоратор для логирования вызовов функций"""
+    """decorator for logging functions call"""
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
@@ -46,11 +46,11 @@ ParsedData = namedtuple("ParsedData", "urls, total_logs, total_time, err_count")
 @debug_info
 def get_last_log(log_dir, log_template):
     """
-    возвращает последний непроанализированный лог и его дату
-    :param log_dir: папка с логами
-    :param report_dir: папка с отчетами
-    :param log_template: регулярное выражения для имени лог-файла
-    :return: LogPath(filepath=<путь> , date=<дата>), если логов нет, то LogPath(None , None)
+    get last log filepath and date
+    :param log_dir: logs directory
+    :param report_dir: reports directory
+    :param log_template: regexp for log filename
+    :return: LogPath(filepath=<filepath> , date=<date>), None if no logs
     """
 
     last_date = None
@@ -74,6 +74,12 @@ def get_last_log(log_dir, log_template):
 
 
 def is_report_exist(report_dir, date):
+    """
+    check report existance for the specified date
+    :param report_dir: reports directory
+    :param date: log date
+    :return: True if report exist
+    """
     exist_report_path = os.path.join(report_dir, "report-" + date.strftime("%Y%m%d") + ".html")
     return os.path.exists(exist_report_path)
 
@@ -81,11 +87,10 @@ def is_report_exist(report_dir, date):
 @debug_info
 def get_parsed_data(filpath, template):
     """
-    парсинг лога
-    :param filpath: лог-файл
-    :param template: регулярное выражение для строки лога
-    :param max_log: максимальное число анализируемых строк
-    :return: ParsedData(urls=<dict("url": "list(время1, время2...)")>, total_logs=<число логов>, total_time=<общее время обработки запросов>, err_count=<число ошибок>)
+    log parsing
+    :param filpath: log file path
+    :param template: regexp for log line
+    :return: ParsedData(urls=<dict("url": "list(request_time1, request_time2...)")>, total_logs=<total logs count>, total_time=<total request time>, err_count=<error count>)
     """
 
     urls = dict()
@@ -108,11 +113,10 @@ def get_parsed_data(filpath, template):
 @debug_info
 def parse_log_strings(filepath, template):
     """
-    вспомогательный генератор для парсинга, возвращает информацию для очередной проанализированной строки
-    :param filepath: лог-файл
-    :param template: регулярное выражение для строки лога
-    :param max_log: максимальное число анализируемых строк
-    :return: ParsedUrl(url=<url>, work_time=<время обработки запроса>)
+    generator for parse log
+    :param filepath: log file path
+    :param template: regexp for log line
+    :return: ParsedUrl(url=<url>, work_time=<request time>)
     """
     pattern = re.compile(template)
     open_f = gzip.open if filepath.endswith('.gz') else open
@@ -133,10 +137,10 @@ def parse_log_strings(filepath, template):
 
 def parse_log_string(string, pattern):
     """
-    парсинг строки лога
-    :param string: строка
-    :param pattern: скомпилированный паттерн регулярного выражения для строки лога
-    :return: ParsedUrl(utl=<url>, work_time=<время обработки запроса>)
+    parse one log line
+    :param string: line
+    :param pattern: compiled pattern for log line
+    :return: ParsedUrl(utl=<url>, work_time=<request time>)
     """
     res = re.match(pattern, string)
     if res:
@@ -147,12 +151,12 @@ def parse_log_string(string, pattern):
 
 def make_report_json(parsed_data, total_logs, total_time, report_size):
     """
-    вычисления показателей и перевод распаршенной информации в json
-    :param parsed_data: распаршенная информации
-    :param total_logs: число логов
-    :param total_time: общее время обработки запросов
-    :param report_size: максимальный размер отчета
-    :return: json строка
+    calculation of indicators and translation to json
+    :param parsed_data: parsed data
+    :param total_logs: total log count
+    :param total_time: total request time
+    :param report_size: max report size
+    :return: json string
     """
     UrlsInfo = namedtuple("UrlsInfo", "url, work_time_list")
     urls_infos = []
@@ -180,12 +184,12 @@ def make_report_json(parsed_data, total_logs, total_time, report_size):
 
 def render_html(json_data, report_dir, date, report_file="report.html"):
     """
-    рендер html отчета
-    :param json_data: данные для отчета
-    :param report_dir: папка для отчета
-    :param date: дата отчета
-    :param report_file: шаблон отчета
-    :return: путь до сгенерированного отчета
+    render html report
+    :param json_data: json data
+    :param report_dir: reports directory
+    :param date: report date
+    :param report_file: report template file
+    :return: path to generated report
     """
     if not os.path.exists(report_file):
         raise RuntimeError(f"Report template file not found - {report_file}")
@@ -204,35 +208,40 @@ def init_log(level=logging.INFO,
              datefmt="%Y.%m.%d %H:%M:%S"
              ):
     """
-    инициализация логирования
-    :param level: уровень лога
-    :param filename: файл для лога
-    :param format: формат записи лога
-    :param datefmt: формат времени лога
+    logging initialization
+    :param level: logging level
+    :param filename: file for logging
+    :param format: logging format
+    :param datefmt: date format
     :return:
     """
     logging.basicConfig(format=format, datefmt=datefmt, level=level, filename=filename)
 
 
 def get_config_path():
+    """
+    get config file path from command line
+    :return: config file path
+    """
     parser = argparse.ArgumentParser()
-    parser.add_argument("-c", "--config", type=str, default="config.json", help="конфигурационный файл")
+    parser.add_argument("-c", "--config", type=str, default="config.json", help="config file")
     namespace = parser.parse_args()
     return namespace.config
 
 
 def load_config(config, filepath):
     """
-    загрузака конфига, дополняет переданный конфиг значениями из параметров командной строки и конфиг-файла
-    :param config: словарь, в который будет загружен конфиг
+    loading config, update config dict with values from config file
+    :param config: dict for loadind config
+    :param filepath: config file path
     """
 
     if not os.path.exists(filepath):
-        raise FileNotFoundError("Configuration file not found")
+        raise FileNotFoundError("config file not found")
     with open(filepath) as f:
         conf_from_file = json.load(f)
         if not isinstance(conf_from_file, dict):
-            raise TypeError("Wrong data format in configuration file")
+            raise TypeError("Wrong data format in config file")
         for key, value in conf_from_file.items():
             config[key] = value
 
@@ -243,9 +252,23 @@ def load_config(config, filepath):
         config["LOGGING_FILE"] = "log.log"
 
 
+def error_logging(info):
+    """
+    error logging
+    if logger not initialized, print error to stderr
+    :param info: info for logging
+    """
+    if logging.getLogger().hasHandlers():
+        logging.exception(info)
+    else:
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        traceback.print_exception(exc_type, exc_value, exc_traceback, file=sys.stderr)
+
+
 def main():
     load_config(config, get_config_path())
     init_log(config["LOGGING_LEVEL"], config["LOGGING_FILE"])
+    logging.info("Work begin")
     log_info = get_last_log(config["LOG_DIR"], config["LOG_FILE_TEMPLATE"])
 
     if is_report_exist(config["REPORT_DIR"], log_info.date):
@@ -273,12 +296,7 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        init_log()
-        logging.exception("Work interrupted")
+        error_logging("Work interrupted:")
     except Exception as e:
-        if logging.getLogger().hasHandlers():
-            logging.exception("An error occurred")
-        else:
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            print("An error occurred:")
-            traceback.print_exception(exc_type, exc_value, exc_traceback, file=sys.stderr)
+        error_logging("An error occurred:")
+
