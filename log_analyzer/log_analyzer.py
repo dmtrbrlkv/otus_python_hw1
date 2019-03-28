@@ -125,8 +125,6 @@ def parse_log_strings(filepath, template):
         for string in f:
             string = string.decode("utf8")
             cnt += 1
-            if cnt == 300000:
-                return
             if (cnt % 100000) == 0:
                 logging.info(f"{cnt} lines processed")
             parsed_url = parse_log_string(string, pattern)
