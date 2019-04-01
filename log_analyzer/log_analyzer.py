@@ -237,7 +237,6 @@ def load_config(config, filepath):
     :param config: dict for loadind config
     :param filepath: config file path
     """
-
     if not os.path.exists(filepath):
         raise FileNotFoundError("config file not found")
     with open(filepath) as f:
@@ -252,19 +251,6 @@ def load_config(config, filepath):
 
     if "LOGGING_FILE" not in config:
         config["LOGGING_FILE"] = "log.log"
-
-
-def error_logging(info):
-    """
-    error logging
-    if logger not initialized, print error to stderr
-    :param info: info for logging
-    """
-    if logging.getLogger().hasHandlers():
-        logging.exception(info)
-    else:
-        exc_type, exc_value, exc_traceback = sys.exc_info()
-        traceback.print_exception(exc_type, exc_value, exc_traceback, file=sys.stderr)
 
 
 def main():
@@ -298,7 +284,7 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        error_logging("Work interrupted:")
+        logging.exception("Work interrupted:")
     except Exception as e:
-        error_logging("An error occurred:")
+        logging.exception("An error occurred:")
 
